@@ -1,0 +1,1 @@
+ALTER TABLE `sync_runs` ADD `excluded_sajulbra` integer DEFAULT 0 NOT NULL;

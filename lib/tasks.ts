@@ -35,10 +35,41 @@ export type TaskRecord = {
   parentOccurrenceId: number | null;
   clientId: number | null;
   processId: number | null;
+  tags: string;
+  attachments: string;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
 };
+
+export type TaskAttachment = { id: string; name: string; url: string };
+
+export function parseTaskTags(value: unknown): string[] {
+  let source: unknown = value;
+  if (typeof value === "string") {
+    try { source = JSON.parse(value); } catch { source = value.split(","); }
+  }
+  if (!Array.isArray(source)) return [];
+  return [...new Set(source.map((item) => String(item).trim()).filter(Boolean))]
+    .slice(0, 12)
+    .map((item) => item.slice(0, 40));
+}
+
+export function parseTaskAttachments(value: unknown): TaskAttachment[] {
+  let source: unknown = value;
+  if (typeof value === "string") {
+    try { source = JSON.parse(value); } catch { return []; }
+  }
+  if (!Array.isArray(source)) return [];
+  return source.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const candidate = item as Record<string, unknown>;
+    const name = String(candidate.name || "").trim().slice(0, 120);
+    const url = String(candidate.url || "").trim().slice(0, 2000);
+    if (!name || !/^https?:\/\//i.test(url)) return [];
+    return [{ id: String(candidate.id || crypto.randomUUID()), name, url }];
+  }).slice(0, 10);
+}
 
 export function isIsoDate(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

@@ -1,206 +1,393 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarDays, CheckCircle2, Clock3, ExternalLink, FileSearch, LoaderCircle, RefreshCw, Search } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, FileDown, LoaderCircle, Plus, RefreshCw } from "lucide-react";
+import {
+  ProcessEvolutionChart,
+  ProcessStatusChart,
+  type MonthlyProcessPoint,
+  type ProcessStatusPoint,
+} from "@/components/dashboard-charts";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
-type Status = "NEW" | "IN_REVIEW" | "REVIEWED" | "NO_ACTION" | "COMPLETED" | "NEEDS_CONFIRMATION";
-type Classification = "UNKNOWN" | "INFORMATION" | "POSSIBLE_DEADLINE" | "HEARING" | "PAYMENT" | "DOCUMENT_REQUEST" | "PROCEDURAL_ACTION";
-type Intimation = {
-  id: number; externalId: string; processNumber: string | null; processId: number | null; clientId: number | null; clientName: string | null; court: string | null; judicialBody: string | null;
-  availabilityDate: string | null; publicationDate: string | null; recipient: string | null; lawyerName: string | null;
-  oab: string; oabUf: string; content: string; summary: string; status: Status; classification: Classification;
-  sourceUrl: string | null; firstSeenAt: string; reviewedAt: string | null; updatedAt: string;
+type SyncRun = {
+  id?: number;
+  attemptedAt: string;
+  succeededAt: string | null;
+  status: string;
+  oab?: string;
+  oabUf?: string;
+  historical?: boolean;
+  firstSyncCompleted?: boolean;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  lastPeriodProcessed?: string | null;
+  receivedCount: number;
+  totalFound?: number;
+  totalUniqueProcesses?: number;
+  newCount: number;
+  existingCount: number;
+  updatedCount?: number;
+  duplicateCount?: number;
+  pagesProcessed?: number;
+  periodsProcessed?: number;
+  minDate?: string | null;
+  maxDate?: string | null;
+  recordsByYear?: string;
+  excludedSajulbra: number;
+  error: string | null;
 };
-type Dashboard = { counts: { new: number; inReview: number; possibleDeadlines: number; hearings: number; reviewed: number; total: number }; lastSync: SyncRun | null };
-type SyncRun = { attemptedAt: string; succeededAt: string | null; status: string; receivedCount: number; newCount: number; existingCount: number; error: string | null };
-type Filter = "ALL" | "NEW" | "IN_REVIEW" | "POSSIBLE_DEADLINE" | "HEARING" | "NO_ACTION" | "COMPLETED";
 
-const statusLabels: Record<Status, string> = { NEW: "Nova", IN_REVIEW: "Em análise", REVIEWED: "Analisada", NO_ACTION: "Sem providência", COMPLETED: "Concluída", NEEDS_CONFIRMATION: "Necessita conferência" };
-const classificationLabels: Record<Classification, string> = { UNKNOWN: "Não classificada", INFORMATION: "Informação", POSSIBLE_DEADLINE: "Possível prazo", HEARING: "Audiência", PAYMENT: "Pagamento", DOCUMENT_REQUEST: "Solicitação de documento", PROCEDURAL_ACTION: "Providência processual" };
-const filterLabels: Record<Filter, string> = { ALL: "Todas", NEW: "Novas", IN_REVIEW: "Em análise", POSSIBLE_DEADLINE: "Possíveis prazos", HEARING: "Audiências", NO_ACTION: "Sem providência", COMPLETED: "Concluídas" };
-const statusStyle: Record<Status, string> = { NEW: "border-rose-200 bg-rose-50 text-rose-800", IN_REVIEW: "border-amber-200 bg-amber-50 text-amber-800", REVIEWED: "border-sky-200 bg-sky-50 text-sky-800", NO_ACTION: "border-slate-200 bg-slate-100 text-slate-700", COMPLETED: "border-emerald-200 bg-emerald-50 text-emerald-800", NEEDS_CONFIRMATION: "border-orange-200 bg-orange-50 text-orange-800" };
-const classificationStyle: Partial<Record<Classification, string>> = { POSSIBLE_DEADLINE: "border-red-200 bg-red-50 text-red-800", HEARING: "border-violet-200 bg-violet-50 text-violet-800", INFORMATION: "border-blue-200 bg-blue-50 text-blue-800" };
+type Intimation = {
+  id: number;
+  processNumber: string | null;
+  processId: number | null;
+  court: string | null;
+  availabilityDate: string | null;
+  summary: string;
+  actionType: string | null;
+  classification: string;
+  status: string;
+};
 
-function formatDate(value: string | null, withTime = false) {
-  if (!value) return "—";
-  const normalized = /T|\s\d{2}:/.test(value) ? value.replace(" ", "T") + (value.includes("Z") ? "" : "Z") : `${value}T12:00:00Z`;
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", ...(withTime ? { timeStyle: "short", timeZone: "America/Sao_Paulo" } : { timeZone: "UTC" }) }).format(date);
+type Deadline = {
+  kind: "CALENDAR";
+  id: number;
+  title: string;
+  dueDate: string;
+  dueTime: string | null;
+  legalType: string;
+  color: string | null;
+  processId: number | null;
+  processNumber: string | null;
+};
+
+type ChartPeriod = 6 | 12 | 24;
+
+type DashboardData = {
+  success: true;
+  metrics: {
+    totalProcesses: number;
+    activeProcesses: number;
+    pendingIntimations: number;
+    deadlinesToday: number;
+    sajulbra: number;
+    newProcessesThisMonth: number;
+    newProcessesPreviousMonth: number;
+    closedProcesses: number;
+    avgActiveAgeDays: number | null;
+    newProcessTrend: number | null;
+    closedRate: number;
+  };
+  intimations: Intimation[];
+  deadlines: Deadline[];
+  periodMonths: ChartPeriod;
+  monthly: MonthlyProcessPoint[];
+  statusBreakdown: ProcessStatusPoint[];
+  lastSync: SyncRun | null;
+  lastAttempt: SyncRun | null;
+};
+
+type ErrorResponse = { success: false; error?: string };
+
+const classificationLabels: Record<string, string> = {
+  UNKNOWN: "Publicação",
+  INFORMATION: "Informação",
+  POSSIBLE_DEADLINE: "Possível prazo",
+  HEARING: "Audiência",
+  PAYMENT: "Pagamento",
+  DOCUMENT_REQUEST: "Documento",
+  PROCEDURAL_ACTION: "Providência",
+};
+
+const statusLabels: Record<string, string> = {
+  NEW: "Nova",
+  IN_REVIEW: "Em análise",
+  NEEDS_CONFIRMATION: "Confirmação necessária",
+};
+
+function formatNumber(value: number | null | undefined) {
+  return value == null ? "—" : new Intl.NumberFormat("pt-BR").format(value);
 }
 
-function priority(item: Intimation) {
-  if (item.status === "NEW") return 0;
-  if (item.classification === "POSSIBLE_DEADLINE") return 1;
-  if (item.classification === "HEARING") return 2;
-  if (item.status === "IN_REVIEW" || item.status === "NEEDS_CONFIRMATION") return 3;
-  if (item.status === "COMPLETED" || item.status === "REVIEWED" || item.status === "NO_ACTION") return 5;
-  return 4;
+function parseDate(value: string) {
+  const normalized = value.includes("T") ? value : value.includes(" ") ? `${value.replace(" ", "T")}Z` : `${value}T12:00:00Z`;
+  return new Date(normalized);
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "Ainda não sincronizado";
+  const date = parseDate(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const options: Intl.DateTimeFormatOptions = { dateStyle: "short", timeZone: "America/Sao_Paulo" };
+  if (value.includes("T") || value.includes(" ")) options.timeStyle = "short";
+  return new Intl.DateTimeFormat("pt-BR", options).format(date);
+}
+
+function formatDeadlineDate(value: string) {
+  const date = parseDate(value);
+  if (Number.isNaN(date.getTime())) return { month: "—", day: "—" };
+  return {
+    month: new Intl.DateTimeFormat("pt-BR", { month: "short", timeZone: "America/Sao_Paulo" }).format(date).replace(".", "").toUpperCase(),
+    day: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", timeZone: "America/Sao_Paulo" }).format(date),
+  };
+}
+
+function formatDuration(days: number | null) {
+  if (days == null || days < 0) return "—";
+  if (days < 60) return `${Math.max(1, Math.round(days))} dias`;
+  if (days < 730) return `${(days / 30.44).toFixed(1).replace(".", ",")} meses`;
+  return `${(days / 365.25).toFixed(1).replace(".", ",")} anos`;
+}
+
+function formatSyncPeriod(run: SyncRun | null | undefined) {
+  if (!run?.periodStart && !run?.periodEnd) return "—";
+  return `${formatDateTime(run.periodStart)} até ${formatDateTime(run.periodEnd)}`;
+}
+
+function syncStatusLabel(run: SyncRun | null | undefined) {
+  if (!run) return "Sem histórico";
+  if (run.status === "RUNNING") return "Em andamento";
+  if (run.status === "ERROR") return "Com erro";
+  if (run.firstSyncCompleted) return "Histórico completo";
+  return "Período processado";
+}
+
+const calendarTypeLabels: Record<string, string> = { HEARING: "Audiência", DEADLINE: "Prazo", MEETING: "Reunião", DILIGENCE: "Diligência", EXPERT_EXAM: "Perícia", ORAL_ARGUMENT: "Sustentação", CLIENT_SERVICE: "Atendimento", OTHER: "Outro" };
+
+function calendarTime(value: string | null) {
+  if (!value) return null;
+  const date = parseDate(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(date);
 }
 
 export default function Home() {
-  const [items, setItems] = useState<Intimation[]>([]);
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [selected, setSelected] = useState<Intimation | null>(null);
-  const [filter, setFilter] = useState<Filter>("ALL");
-  const [search, setSearch] = useState("");
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const syncLock = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const [periodMonths, setPeriodMonths] = useState<ChartPeriod>(12);
 
   const load = useCallback(async () => {
-    const [intimationsResponse, dashboardResponse] = await Promise.all([fetch("/api/intimations", { cache: "no-store" }), fetch("/api/dashboard", { cache: "no-store" })]);
-    const intimationsData = await intimationsResponse.json() as { intimations: Intimation[]; error?: string };
-    const dashboardData = await dashboardResponse.json() as Dashboard & { error?: string };
-    if (!intimationsResponse.ok || !dashboardResponse.ok) throw new Error(intimationsData.error || dashboardData.error || "Não foi possível carregar o painel.");
-    setItems(intimationsData.intimations);
-    setDashboard({ counts: dashboardData.counts, lastSync: dashboardData.lastSync });
-  }, []);
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/dashboard?months=${periodMonths}`, { cache: "no-store" });
+      const payload = await response.json() as DashboardData | ErrorResponse;
+      if (!response.ok || payload.success !== true) throw new Error("error" in payload ? payload.error || "Não foi possível carregar o dashboard." : "Não foi possível carregar o dashboard.");
+      setDashboard(payload);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha ao carregar o dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  }, [periodMonths]);
 
-  const sync = useCallback(async (automatic = false) => {
-    if (syncLock.current) return { success: false, skipped: true };
-    syncLock.current = true;
-    setSyncing(true); setError(""); if (!automatic) setMessage("");
+  useEffect(() => {
+    // A primeira leitura sincroniza o estado local com os dados externos do dashboard.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  async function syncOab() {
+    if (syncing) return;
+    setSyncing(true);
+    setError(null);
     try {
       const response = await fetch("/api/sync", { method: "POST" });
-      const data = await response.json() as { success: boolean; new: number; existing: number; error?: string };
-      if (!response.ok || !data.success) throw new Error(data.error || "Não foi possível consultar o DJEN agora.");
-      setMessage(data.new > 0 ? `${data.new} nova${data.new === 1 ? "" : "s"} intimação${data.new === 1 ? "" : "ões"} encontrada${data.new === 1 ? "" : "s"}.` : "Nenhuma nova publicação encontrada.");
+      const payload = await response.json() as { success?: boolean; error?: string };
+      if (!response.ok || !payload.success) throw new Error(payload.error || "Não foi possível concluir a sincronização do DJEN.");
       await load();
-      return { success: true, new: data.new, existing: data.existing };
     } catch (caught) {
-      const text = caught instanceof Error ? caught.message : "Falha inesperada.";
-      setError(text);
-      if (!automatic) throw caught;
-      return { success: false, error: text };
-    } finally { syncLock.current = false; setSyncing(false); }
-  }, [load]);
-
-  useEffect(() => {
-    let mounted = true;
-    void load().then(async () => {
-      if (!mounted) return;
-      setLoading(false);
-    }).catch((caught) => { if (mounted) { setError(caught instanceof Error ? caught.message : "Falha ao carregar."); setLoading(false); } });
-    return () => { mounted = false; };
-  }, [load]);
-
-  useEffect(() => {
-    if (loading || !dashboard) return;
-    const last = dashboard.lastSync?.succeededAt ? new Date(dashboard.lastSync.succeededAt.replace(" ", "T") + "Z").getTime() : 0;
-    if (!last || Date.now() - last > 60 * 60 * 1000) void sync(true);
-    const interval = window.setInterval(() => void sync(true), 60 * 60 * 1000);
-    return () => window.clearInterval(interval);
-  }, [dashboard, loading, sync]);
-
-  useEffect(() => {
-    const context = typeof document === "undefined" ? undefined : (document as Document & { modelContext?: { registerTool: (tool: unknown, options?: { signal?: AbortSignal }) => void | Promise<void> } }).modelContext;
-    if (!context?.registerTool) return;
-    const lifecycle = new AbortController();
-    try { void Promise.resolve(context.registerTool({ name: "sync_djen", title: "Atualizar DJEN", description: "Sincroniza publicações reais da OAB/RS 103.774, salva somente novidades e atualiza o painel.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async () => sync(false) }, { signal: lifecycle.signal })).catch(() => undefined); } catch {}
-    return () => lifecycle.abort();
-  }, [sync]);
-
-  async function updateField(field: "status" | "classification", value: string) {
-    if (!selected) return;
-    const response = await fetch(`/api/intimations/${selected.id}/${field}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
-    const data = await response.json() as { intimation: Intimation; error?: string };
-    if (!response.ok) { setError(data.error || "Não foi possível salvar a alteração."); return; }
-    setSelected(data.intimation);
-    await load();
+      await load().catch(() => undefined);
+      setError(caught instanceof Error ? caught.message : "Falha ao sincronizar o DJEN.");
+    } finally {
+      setSyncing(false);
+    }
   }
 
-  const visibleItems = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("pt-BR");
-    return items.filter((item) => {
-      const matchesFilter = filter === "ALL" || (["POSSIBLE_DEADLINE", "HEARING"].includes(filter) ? item.classification === filter : item.status === filter);
-      const haystack = [item.processNumber, item.recipient, item.content, item.court, item.judicialBody].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR");
-      return matchesFilter && (!query || haystack.includes(query));
-    }).sort((a, b) => priority(a) - priority(b) || String(b.availabilityDate || "").localeCompare(String(a.availabilityDate || "")));
-  }, [items, filter, search]);
-
-  const counts = dashboard?.counts ?? { new: 0, inReview: 0, possibleDeadlines: 0, hearings: 0, reviewed: 0, total: 0 };
-  const lastSuccessful = dashboard?.lastSync?.succeededAt || null;
-  const indicators: Array<{ label: string; value: number; Icon: LucideIcon }> = [
-    { label: "Novas", value: counts.new, Icon: AlertCircle },
-    { label: "Em análise", value: counts.inReview, Icon: Clock3 },
-    { label: "Possíveis prazos", value: counts.possibleDeadlines, Icon: FileSearch },
-    { label: "Audiências", value: counts.hearings, Icon: CalendarDays },
-    { label: "Analisadas", value: counts.reviewed, Icon: CheckCircle2 },
-  ];
+  const metrics = dashboard?.metrics;
+  const monthly = dashboard?.monthly || [];
+  const syncRun = dashboard?.lastAttempt || dashboard?.lastSync;
+  const needsHistoricalSync = !dashboard?.lastSync?.firstSyncCompleted;
 
   return (
-    <div>
-      <div className="mx-auto w-full max-w-7xl px-5 py-7 sm:px-8 sm:py-10">
-        <header className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div><p className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Monitoramento de intimações</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Publicações do Francisco</h1><p className="mt-2 text-base text-slate-600">Francisco José Barrios Jansen Ferreira · OAB/RS 103.774</p><p className="mt-2 text-sm text-slate-500">Última atualização bem-sucedida: {formatDate(lastSuccessful, true)}</p></div>
-          <Button onClick={() => void sync(false).catch(() => undefined)} disabled={syncing} size="lg" className="h-11 self-start bg-[#112b3d] px-5 hover:bg-[#1c4057] lg:self-auto">{syncing ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}{syncing ? "Consultando DJEN..." : "Atualizar DJEN"}</Button>
-        </header>
+    <div className="min-h-screen bg-[#f6f8fa]">
+      <section className="h-auto px-4 pb-10 pt-[34px] sm:px-8 lg:min-h-[780px]">
+        <div className="mx-auto max-w-[1196px]">
+          <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-[26px] font-bold leading-tight tracking-[-0.035em] text-[#111a2d]">Dashboard Executivo</h1>
+              <p className="mt-1 text-sm font-medium text-[#60738f]">Jansen Advocacia • Dr. Francisco</p>
+              <p className="mt-2 text-xs text-[#8da0ba]" aria-live="polite">
+                {syncing ? (needsHistoricalSync ? "Sincronização histórica da OAB em andamento…" : "Sincronização DJEN/DataJud em andamento…") : dashboard?.lastSync ? `Última sincronização: ${formatDateTime(dashboard.lastSync.succeededAt)}` : "Sincronize o DJEN para carregar os indicadores."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Button
+                variant="outline"
+                onClick={() => void syncOab()}
+                disabled={syncing}
+                aria-busy={syncing}
+                className="h-[43px] rounded-xl border-[#9dbbd7] bg-white px-4 text-sm font-medium text-[#334258] shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-[#fafbfd] disabled:cursor-wait disabled:opacity-70"
+              >
+                {syncing ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="size-4 text-[#637791]" aria-hidden="true" />}
+                {syncing ? (needsHistoricalSync ? "Carregando histórico…" : "Sincronizando OAB…") : `Sincronizar OAB (${formatNumber(metrics?.totalProcesses)})`}
+              </Button>
+              <Button asChild className="h-[43px] rounded-xl bg-[#09111f] px-5 text-sm font-medium text-white shadow-[0_2px_4px_rgba(9,17,31,0.16)] hover:bg-[#142037]">
+                <Link href="/demandas/nova"><Plus className="size-4" aria-hidden="true" />Nova Demanda</Link>
+              </Button>
+            </div>
+          </header>
 
-        <section className={`mb-6 rounded-xl border p-5 sm:p-6 ${counts.new > 0 ? "border-rose-200 bg-rose-50" : "border-emerald-200 bg-emerald-50"}`}>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex gap-3">{counts.new > 0 ? <AlertCircle className="mt-0.5 size-6 shrink-0 text-rose-700" /> : <CheckCircle2 className="mt-0.5 size-6 shrink-0 text-emerald-700" />}<div><h2 className="text-lg font-bold">{counts.new > 0 ? `${counts.new} nova${counts.new === 1 ? "" : "s"} intimação${counts.new === 1 ? "" : "ões"} precisa${counts.new === 1 ? "" : "m"} ser analisada${counts.new === 1 ? "" : "s"}` : "Tudo analisado por enquanto."}</h2><p className="mt-1 text-sm text-slate-600">{message || (counts.new > 0 ? "As publicações novas aparecem primeiro na lista." : "Atualize o DJEN para verificar novas publicações.")}</p></div></div>
-            {counts.new > 0 && <Button variant="outline" onClick={() => setFilter("NEW")} className="self-start border-rose-300 bg-white">Ver novas</Button>}
-          </div>
-        </section>
+          {error && <div role="alert" className="mt-5 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{error}</div>}
 
-        {error && <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p className="font-semibold">Não foi possível concluir a operação.</p><p className="mt-1">{error}</p>{lastSuccessful && <p className="mt-2 text-red-700">Última atualização bem-sucedida: {formatDate(lastSuccessful, true)}</p>}</div>}
+          {syncRun && <section aria-label="Status da sincronização" className="mt-5">
+            
+            
+            {syncRun.status === "ERROR" && syncRun.error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{syncRun.error}</p>}
+          </section>}
 
-        <section aria-label="Indicadores" className="mb-7 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-5">
-          {indicators.map(({ label, value, Icon }) => <div key={label} className="bg-white p-4 sm:p-5"><div className="flex items-center gap-2 text-sm text-slate-500"><Icon className="size-4" />{label}</div><p className="mt-2 text-2xl font-bold">{value}</p></div>)}
-        </section>
+          <section aria-label="Indicadores" className="mt-[21px] grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
+            <article className="h-[122px] rounded-2xl border border-[#dee4eb] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.035)]">
+              <p className="text-xs font-semibold text-[#61738d]">Total de Processos</p>
+              <p className="mt-2 text-[32px] font-bold leading-none tracking-[-0.04em] text-[#111a2d]">{loading ? "—" : formatNumber(metrics?.totalProcesses)}</p>
+              <p className="mt-2 text-xs text-[#8da0ba]">Processos particulares monitorados</p>
+            </article>
+            <article className="h-[122px] rounded-2xl border border-[#dee4eb] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.035)]">
+              <p className="text-xs font-semibold text-[#61738d]">Intimações Pendentes</p>
+              <p className="mt-2 text-[32px] font-bold leading-none tracking-[-0.04em] text-[#f49a00]">{loading ? "—" : formatNumber(metrics?.pendingIntimations)}</p>
+              <p className="mt-2 text-xs text-[#8da0ba]">Novas, em análise ou confirmação</p>
+            </article>
+            <article className="h-[122px] rounded-2xl border border-[#dee4eb] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.035)]">
+              <p className="text-xs font-semibold text-[#61738d]">Prazos Hoje</p>
+              <p className="mt-2 text-[32px] font-bold leading-none tracking-[-0.04em] text-[#f04444]">{loading ? "—" : formatNumber(metrics?.deadlinesToday)}</p>
+              <p className="mt-2 text-xs text-[#8da0ba]">Tarefas e prazos fatais em aberto</p>
+            </article>
+            <article className="h-[122px] rounded-2xl border border-[#dee4eb] bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.035)]">
+              <p className="text-xs font-semibold text-[#61738d]">Sajulbra</p>
+              <p className="mt-2 text-[32px] font-bold leading-none tracking-[-0.04em] text-[#111a2d]">{loading ? "—" : formatNumber(metrics?.sajulbra)}</p>
+              <p className="mt-2 text-xs text-[#8da0ba]">Quantidade de processos SAJULBRA</p>
+            </article>
+          </section>
 
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 p-4 sm:p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div><h2 className="text-xl font-bold">Intimações</h2><p className="mt-1 text-sm text-slate-500">{visibleItems.length} {visibleItems.length === 1 ? "publicação exibida" : "publicações exibidas"}</p></div>
-              <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
-                <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar processo, parte ou conteúdo" className="h-10 pl-9" /></div>
-                <div className="sm:hidden"><Select value={filter} onValueChange={(value) => setFilter(value as Filter)}><SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(filterLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+          <div className="mt-[26px] grid gap-6 xl:grid-cols-[minmax(0,2.08fr)_minmax(330px,1fr)]">
+            <section>
+              <div className="mb-3 flex items-center justify-between px-1">
+                <h2 className="text-base font-bold tracking-[-0.015em] text-[#111a2d]">Últimas Intimações</h2>
+                <Link href="/intimacoes" className="rounded-md px-1 py-1 text-xs font-semibold text-[#e68e00] hover:text-[#b97000] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f0a000]">Ver todas</Link>
               </div>
-            </div>
-            <div className="mt-4 hidden flex-wrap gap-2 sm:flex">{(Object.keys(filterLabels) as Filter[]).map((value) => <Button key={value} size="sm" variant={filter === value ? "default" : "outline"} onClick={() => setFilter(value)} className={filter === value ? "bg-[#112b3d]" : ""}>{filterLabels[value]}</Button>)}</div>
+              <div className="overflow-hidden rounded-2xl border border-[#dee4eb] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.035)]">
+                {loading ? <div className="p-10 text-center text-sm text-[#687a92]">Carregando publicações…</div> : dashboard?.intimations.length ? dashboard.intimations.map((item) => (
+                  <article key={item.id} className="min-h-[149px] border-b border-[#e8ecf1] px-5 py-[18px] last:border-b-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-[#607793]">{[item.court, item.processNumber].filter(Boolean).join(" • ") || "Publicação sem processo identificado"}</p>
+                        <h3 className="mt-2 text-[16px] font-bold leading-tight text-[#111a2d]">{item.actionType || classificationLabels[item.classification] || "Publicação"}</h3>
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#687a92]">{item.summary}</p>
+                      </div>
+                      <time className="shrink-0 pt-0.5 text-xs text-[#8ca0bb]">{formatDateTime(item.availabilityDate)}</time>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.processId ? <Button asChild variant="secondary" size="sm" className="h-[29px] rounded-lg bg-[#edf2f7] px-3 text-xs font-semibold text-[#334258] hover:bg-[#e4ebf2]"><Link href={`/processos/${item.processId}`}>Ver Processo</Link></Button> : <Button variant="secondary" size="sm" disabled className="h-[29px] rounded-lg px-3 text-xs">Processo não vinculado</Button>}
+                      <span className="inline-flex h-[29px] items-center rounded-lg bg-[#fff7e8] px-3 text-xs font-medium text-[#9a6500]">{statusLabels[item.status] || classificationLabels[item.classification] || "Acompanhar"}</span>
+                    </div>
+                  </article>
+                )) : <div className="p-10 text-center text-sm text-[#687a92]">Nenhuma publicação sincronizada ainda.</div>}
+              </div>
+            </section>
+
+            <section>
+              <div className="mb-3 flex items-center justify-between px-1">
+                <h2 className="text-base font-bold tracking-[-0.015em] text-[#111a2d]">Próximos Prazos</h2>
+                <Link href="/calendario" className="rounded-md px-1 py-1 text-xs font-semibold text-[#e68e00] hover:text-[#b97000] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f0a000]">Calendário</Link>
+              </div>
+              <div className="space-y-3">
+                {loading ? <div className="rounded-2xl border border-[#dee4eb] bg-white p-8 text-center text-sm text-[#687a92]">Carregando prazos…</div> : dashboard?.deadlines.length ? dashboard.deadlines.slice(0, 3).map((item) => {
+                  const date = formatDeadlineDate(item.dueDate);
+                  const time = calendarTime(item.dueTime);
+                  return <Link key={`${item.kind}-${item.id}`} href="/calendario" className="grid min-h-[82px] grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-[#dee4eb] bg-white px-4 py-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.035)] transition-colors hover:border-[#cad3de] hover:bg-[#fcfdfe] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2d66a3]"><span className="grid h-[50px] place-items-center rounded-xl border border-[#edf0f4] bg-[#f7f9fb] leading-none"><span className="mt-2 text-[9px] font-bold text-[#8092a9]">{date.month}</span><span className="-mt-1 text-base font-bold text-[#132039]">{date.day}</span></span><span className="min-w-0"><span className="block truncate text-xs font-bold text-[#162238]">{item.title}</span><span className="mt-1 block truncate text-[10px] text-[#90a1b8]">{item.processNumber || "Agenda"}{time ? ` · ${time}` : " · Dia inteiro"}</span></span><span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600"><span className="size-2 rounded-full" style={{ backgroundColor: item.color || "#039be5" }} />{calendarTypeLabels[item.legalType] || "Outro"}</span></Link>;
+                }) : <div className="rounded-2xl border border-dashed border-[#d9e0e8] bg-white p-8 text-center text-sm text-[#687a92]">Nenhum prazo em aberto cadastrado.</div>}
+                <Button asChild variant="outline" className="h-[42px] w-full rounded-2xl border-[#dee4eb] bg-white text-xs font-semibold text-[#43536a] shadow-[0_1px_2px_rgba(15,23,42,0.035)] hover:bg-[#fafbfd]"><Link href="/calendario">Ver Calendário Completo</Link></Button>
+              </div>
+            </section>
           </div>
+        </div>
+      </section>
 
-          {loading ? <div className="flex items-center justify-center gap-3 p-16 text-slate-500"><LoaderCircle className="size-5 animate-spin" />Carregando histórico...</div> : visibleItems.length === 0 ? <div className="p-12 text-center"><FileSearch className="mx-auto size-8 text-slate-400" /><p className="mt-3 font-semibold">Nenhuma publicação encontrada</p><p className="mt-1 text-sm text-slate-500">Ajuste o filtro ou atualize o DJEN.</p></div> : (
-            <div className="divide-y divide-slate-200">
-              {visibleItems.map((item) => <button key={item.id} onClick={() => setSelected(item)} className="block w-full px-4 py-5 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#315f7c] sm:px-5">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0 flex-1"><div className="mb-3 flex flex-wrap gap-2"><Badge variant="outline" className={statusStyle[item.status]}>{statusLabels[item.status]}</Badge><Badge variant="outline" className={classificationStyle[item.classification] || "border-slate-200 bg-slate-50 text-slate-700"}>{classificationLabels[item.classification]}</Badge></div><p className="font-mono text-base font-bold tracking-tight text-[#112b3d]">{item.processNumber || "Processo não informado"}</p><p className="mt-2 text-sm font-medium text-slate-700">{[item.court, item.judicialBody].filter(Boolean).join(" · ") || "Órgão não informado"}</p><p className="mt-2 text-sm text-slate-500">{item.clientName ? `Cliente: ${item.clientName}` : "Cliente não identificado"}</p><p className="mt-3 line-clamp-2 max-w-4xl text-base leading-6 text-slate-600">{item.summary || "Conteúdo não informado."}</p>{item.recipient && <p className="mt-3 truncate text-sm text-slate-500">{/^sigilo$/i.test(item.recipient.trim()) ? "🔒 Processo sigiloso" : `Partes: ${item.recipient}`}</p>}</div>
-                  <div className="shrink-0 lg:pl-8 lg:text-right"><p className="text-sm font-semibold text-slate-700">{formatDate(item.availabilityDate)}</p><p className="mt-2 text-sm font-semibold text-[#315f7c]">Ver detalhes</p></div>
-                </div>
-              </button>)}
+      <section id="relatorios" className="border-t border-[#edf0f3] bg-white">
+        <div className="min-h-[87px] border-b border-[#dde3ea]">
+          <div className="mx-auto flex min-h-[87px] max-w-[1196px] flex-col justify-center gap-3 px-4 py-4 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-bold tracking-[-0.03em] text-[#111a2d]">Relatórios e Estatísticas de Processos</h2>
+              <p className="mt-1 text-xs text-[#60738f]">Jansen Advocacia • Dr. Francisco • Visão Gerencial e Desempenho Operacional</p>
             </div>
-          )}
-        </section>
-      </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="relative">
+                <span className="sr-only">Período dos gráficos</span>
+                <select
+                  value={periodMonths}
+                  onChange={(event) => setPeriodMonths(Number(event.target.value) as ChartPeriod)}
+                  className="h-[44px] min-w-[166px] cursor-pointer appearance-none rounded-lg border border-[#dbe1e8] bg-white px-3 pr-9 text-xs font-semibold text-[#415168] shadow-[0_1px_2px_rgba(15,23,42,0.035)] outline-none transition-colors hover:border-[#c5ced9] focus-visible:border-[#2d66a3] focus-visible:ring-2 focus-visible:ring-[#2d66a3]/25"
+                >
+                  <option value={6}>Últimos 6 meses</option>
+                  <option value={12}>Últimos 12 meses</option>
+                  <option value={24}>Últimos 24 meses</option>
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#708198]" aria-hidden="true">▼</span>
+              </label>
+              <span className="flex h-[44px] items-center gap-2 rounded-lg border border-[#dbe1e8] bg-white px-3 text-xs font-semibold text-[#415168] shadow-[0_1px_2px_rgba(15,23,42,0.035)]"><FileDown className="size-3.5 text-[#708198]" aria-hidden="true" />Dados do dashboard</span>
+            </div>
+          </div>
+        </div>
 
-      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-2xl">
-          {selected && <><SheetHeader className="border-b border-slate-200 p-6 pr-12"><div className="mb-2 flex flex-wrap gap-2"><Badge variant="outline" className={statusStyle[selected.status]}>{statusLabels[selected.status]}</Badge><Badge variant="outline" className={classificationStyle[selected.classification] || "border-slate-200 bg-slate-50 text-slate-700"}>{classificationLabels[selected.classification]}</Badge></div><SheetTitle className="font-mono text-xl text-[#112b3d]">{selected.processNumber || "Processo não informado"}</SheetTitle><SheetDescription>{[selected.court, selected.judicialBody].filter(Boolean).join(" · ")}</SheetDescription><div className="mt-2 flex flex-wrap gap-4 text-sm font-semibold text-[#315f7c]">{selected.clientId ? <a href={`/clientes/${selected.clientId}`}>Cliente: {selected.clientName}</a> : <span className="font-normal text-slate-500">Cliente não identificado</span>}{selected.processId && <a href={`/processos/${selected.processId}`}>Abrir processo</a>}</div></SheetHeader>
-          <div className="space-y-7 p-6">
-            <div className="grid gap-5 sm:grid-cols-2"><label className="space-y-2 text-sm font-semibold text-slate-700">Status<Select value={selected.status} onValueChange={(value) => void updateField("status", value)}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></label><label className="space-y-2 text-sm font-semibold text-slate-700">Classificação<Select value={selected.classification} onValueChange={(value) => void updateField("classification", value)}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(classificationLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></label></div>
-            <dl className="grid gap-x-8 gap-y-5 border-y border-slate-200 py-6 sm:grid-cols-2">
-              {selected.availabilityDate && <div><dt>Data de disponibilização</dt><dd>{formatDate(selected.availabilityDate)}</dd></div>}
-              {selected.publicationDate && <div><dt>Data de publicação</dt><dd>{formatDate(selected.publicationDate)}</dd></div>}
-              {selected.recipient && <div className="sm:col-span-2"><dt>Destinatário / partes</dt><dd>{/^sigilo$/i.test(selected.recipient.trim()) ? "🔒 Processo sigiloso" : selected.recipient}</dd></div>}
-              <div className="sm:col-span-2"><dt>Advogado</dt><dd>{selected.lawyerName}<br />OAB {selected.oabUf} {selected.oab}</dd></div>
-              <div><dt>Primeira vez encontrada</dt><dd>{formatDate(selected.firstSeenAt, true)}</dd></div>
-              <div><dt>ID oficial</dt><dd>{selected.externalId}</dd></div>
-            </dl>
-            <div><h3 className="font-bold">Conteúdo integral</h3><p className="mt-3 whitespace-pre-line rounded-lg bg-slate-50 p-4 text-base leading-7 text-slate-700">{selected.content}</p></div>
-            {selected.sourceUrl && <Button asChild variant="outline"><a href={selected.sourceUrl} target="_blank" rel="noreferrer">Abrir publicação de origem <ExternalLink /></a></Button>}
-          </div></>}
-        </SheetContent>
-      </Sheet>
+        <div className="min-h-[741px] bg-[#f6f8fa] px-4 py-8 sm:px-8">
+          <div className="mx-auto max-w-[1196px]">
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+              <article className="min-h-[158px] rounded-2xl border border-[#e4e8ed] bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+                <div className="flex items-start justify-between gap-3"><p className="max-w-[150px] text-xs font-medium leading-4 text-[#60738f]">Total de Processos<br />Ativos</p>{metrics?.newProcessTrend != null && <span className={`rounded px-2 py-1 text-[10px] font-bold ${metrics.newProcessTrend >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}>{metrics.newProcessTrend >= 0 ? "↑" : "↓"} {Math.abs(metrics.newProcessTrend)}%</span>}</div>
+                <p className="mt-3 text-[31px] font-bold leading-none tracking-[-0.04em] text-[#111a2d]">{loading ? "—" : formatNumber(metrics?.activeProcesses)}</p>
+                <p className="mt-3 text-[11px] leading-4 text-[#91a2b9]">Processos ativos e em<br />acompanhamento</p>
+              </article>
+              <article className="min-h-[158px] rounded-2xl border border-[#e4e8ed] bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+                <div className="flex items-start justify-between gap-3"><p className="text-xs font-medium leading-4 text-[#60738f]">Novos Processos (Mês)</p><span className="text-[10px] font-medium text-[#91a2b9]">Período atual</span></div>
+                <p className="mt-3 text-[31px] font-bold leading-none tracking-[-0.04em] text-[#f49a00]">{loading ? "—" : formatNumber(metrics?.newProcessesThisMonth)}</p>
+                <p className="mt-3 text-[11px] leading-4 text-[#91a2b9]">Processos criados no mês<br />corrente</p>
+              </article>
+              <article className="min-h-[158px] rounded-2xl border border-[#e4e8ed] bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+                <div className="flex items-start justify-between gap-3"><p className="max-w-[150px] text-xs font-medium leading-4 text-[#60738f]">Processos Baixados /<br />Concluídos</p><span className="rounded bg-blue-50 px-2 py-1 text-[10px] font-bold leading-3 text-blue-600">{loading ? "—" : `${metrics?.closedRate}%`}<br />do total</span></div>
+                <p className="mt-3 text-[31px] font-bold leading-none tracking-[-0.04em] text-[#111a2d]">{loading ? "—" : formatNumber(metrics?.closedProcesses)}</p>
+                <p className="mt-3 text-[11px] leading-4 text-[#91a2b9]">Status arquivado ou<br />encerrado</p>
+              </article>
+              <article className="min-h-[158px] rounded-2xl border border-[#e4e8ed] bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+                <div className="flex items-start justify-between gap-3"><p className="max-w-[150px] text-xs font-medium leading-4 text-[#60738f]">Tempo Médio em<br />Carteira</p><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold leading-3 text-slate-600">Dados<br />operacionais</span></div>
+                <p className="mt-3 text-[31px] font-bold leading-none tracking-[-0.04em] text-[#111a2d]">{loading ? "—" : formatDuration(metrics?.avgActiveAgeDays ?? null)}</p>
+                <p className="mt-3 text-[11px] leading-4 text-[#91a2b9]">Média desde o cadastro<br />dos processos ativos</p>
+              </article>
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,2.08fr)_minmax(320px,1fr)]">
+              <article className="min-h-[430px] min-w-0 overflow-hidden rounded-2xl border border-[#e4e8ed] bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+                <div className="flex flex-col gap-4 border-b border-[#edf0f4] pb-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div><h3 className="text-base font-bold leading-6 text-[#111a2d]">Evolução Mensal de Processos e <br />Publicações</h3><p className="mt-1 max-w-sm text-xs leading-4 text-[#91a2b9]">Novos processos, publicações DJEN e encerramentos<br />nos últimos {periodMonths} meses</p></div>
+                  <span className="h-fit rounded-md bg-[#edf2f7] px-2.5 py-1.5 text-[10px] font-semibold text-[#43536a]">Dados mensais</span>
+                </div>
+                <div className="mt-3">
+                  <ProcessEvolutionChart monthly={monthly} loading={loading} periodMonths={periodMonths} />
+                </div>
+              </article>
+
+              <article className="min-h-[430px] overflow-hidden rounded-2xl border border-[#e4e8ed] bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+                <div className="border-b border-[#edf0f4] pb-4"><h3 className="text-base font-bold text-[#111a2d]">Status Processuais</h3><p className="mt-1 text-xs text-[#91a2b9]">Distribuição da carteira atual</p></div>
+                <div className="grid place-items-center py-9"><ProcessStatusChart statuses={dashboard?.statusBreakdown || []} total={metrics?.totalProcesses || 0} loading={loading} /></div>
+                <div className="space-y-3 border-t border-[#edf0f4] pt-4 text-xs">{dashboard?.statusBreakdown.map((phase) => <div key={phase.key} className="flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-[#40516a]"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: phase.color }} aria-hidden="true" />{phase.label}</span><strong className="shrink-0 text-[#111a2d]">{phase.percentage}% <span className="font-medium text-[#91a2b9]">({formatNumber(phase.count)})</span></strong></div>)}</div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

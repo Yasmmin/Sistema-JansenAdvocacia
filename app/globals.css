@@ -1,13 +1,13 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
 :root {
-  --background: #f3f5f7; --foreground: #0f172a; --card: #ffffff; --card-foreground: #0f172a;
-  --popover: #ffffff; --popover-foreground: #0f172a; --primary: #112b3d; --primary-foreground: #ffffff;
-  --secondary: #e8eef3; --secondary-foreground: #112b3d; --muted: #eef2f5; --muted-foreground: #5f6b76;
-  --accent: #dce7ef; --accent-foreground: #112b3d; --destructive: #b42318; --border: #d7dee4;
-  --input: #c7d0d8; --ring: #315f7c; --radius: 0.625rem;
+  --background: #f6f8fa; --foreground: #111a2d; --card: #ffffff; --card-foreground: #111a2d;
+  --popover: #ffffff; --popover-foreground: #111a2d; --primary: #09111f; --primary-foreground: #ffffff;
+  --secondary: #edf2f7; --secondary-foreground: #334258; --muted: #f6f8fa; --muted-foreground: #60738f;
+  --accent: #edf2f7; --accent-foreground: #173a59; --destructive: #ef4444; --border: #dee4eb;
+  --input: #dbe1e8; --ring: #2d66a3; --radius: 0.75rem;
 }
 
 @theme inline {
@@ -15,11 +15,50 @@
   --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground); --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground); --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground); --color-destructive: var(--destructive); --color-border: var(--border);
-  --color-input: var(--input); --color-ring: var(--ring); --radius-sm: calc(var(--radius) - 4px); --radius-md: calc(var(--radius) - 2px); --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 4px); --font-sans: Arial, Helvetica, sans-serif;
+  --color-input: var(--input); --color-ring: var(--ring); --radius-sm: calc(var(--radius) - 4px); --radius-md: calc(var(--radius) - 2px); --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 4px); --font-sans: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 * { border-color: var(--border); }
-body { margin: 0; background: var(--background); color: var(--foreground); font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; }
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
 button, a { -webkit-tap-highlight-color: transparent; }
-dt { font-size: 0.875rem; color: #64748b; }
-dd { margin-top: 0.3rem; font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
+dt { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.01em; color: #718096; }
+dd { margin-top: 0.35rem; font-size: 0.9375rem; font-weight: 600; color: #1e293b; }
+
+::selection { background: #d9e9f5; color: #0b1425; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
+
+.calendar-surface .fc { --fc-border-color: #e0e3e7; --fc-today-bg-color: #ffffff; --fc-now-indicator-color: #1a73e8; color: #202124; font-family: inherit; }
+.calendar-surface .fc .fc-scrollgrid { border: 0; }
+.calendar-surface .fc-theme-standard td:last-child,
+.calendar-surface .fc-theme-standard th:last-child { border-right: 0; }
+.calendar-surface .fc .fc-col-header-cell { background: #ffffff; }
+.calendar-surface .fc .fc-col-header-cell-cushion { padding: 12px 4px 9px; color: #3c4043; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.01em; text-transform: uppercase; }
+.calendar-surface .fc .fc-daygrid-day-top { justify-content: center; }
+.calendar-surface .fc .fc-daygrid-day-number { display: grid; min-width: 28px; height: 28px; margin: 3px 0 1px; place-items: center; border-radius: 999px; color: #3c4043; font-size: 0.75rem; text-decoration: none; }
+.calendar-surface .fc .fc-day-today .fc-daygrid-day-number { background: #1a73e8; color: white; font-weight: 700; }
+.calendar-surface .fc .fc-day-other .fc-daygrid-day-number { color: #a3aab5; }
+.calendar-surface .fc .fc-daygrid-day-frame { min-height: 112px; }
+.calendar-surface .fc .fc-daygrid-event { min-height: 20px; margin: 1px 2px; border: 0; border-radius: 4px; padding: 2px 5px; font-size: 0.69rem; line-height: 1.2; cursor: pointer; }
+.calendar-surface .fc .fc-daygrid-block-event .calendar-event-content { color: inherit; }
+.calendar-surface .fc .fc-daygrid-dot-event { background: transparent !important; color: #3c4043 !important; padding-inline: 4px; }
+.calendar-surface .fc .fc-daygrid-dot-event:hover { background: #f1f3f4 !important; }
+.calendar-surface .calendar-event-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 999px; }
+.calendar-surface .calendar-event-timed { color: #3c4043; }
+.calendar-surface .fc .fc-timegrid-event { border: 0; border-radius: 5px; padding: 2px 4px; color: white; font-size: 0.75rem; }
+.calendar-surface .fc .fc-list { border: 0; }
+.calendar-surface .fc .fc-list-day-cushion { background: #f8fafc; padding: 10px 14px; }
+.calendar-surface .fc .fc-list-event:hover td { background: #fff8e8; }
+.calendar-surface .fc .fc-list-event-dot { border-color: #f59b00; }
+.calendar-surface .fc .fc-timegrid-slot-label-cushion { color: #64748b; font-size: 0.7rem; }
+.calendar-surface .fc .fc-more-link { margin-left: 5px; color: #3c4043; font-size: 0.7rem; font-weight: 600; }
+.calendar-surface .fc a:focus-visible { outline: 2px solid #f59b00; outline-offset: 2px; }
+.calendar-period-title::first-letter { text-transform: uppercase; }
+
+@media (max-width: 640px) {
+  .calendar-surface .fc .fc-daygrid-day-frame { min-height: 82px; }
+  .calendar-surface .fc .fc-daygrid-event { margin-inline: 1px; padding-inline: 2px; }
+  .calendar-surface .fc .fc-col-header-cell-cushion { font-size: 0.6rem; }
+}

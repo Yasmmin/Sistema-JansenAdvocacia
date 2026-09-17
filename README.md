@@ -29,6 +29,29 @@ pnpm build
 pnpm start
 ```
 
+## Configuração do Google Calendar
+
+A integração com o Google Calendar depende das variáveis de ambiente do Worker. Para rodar localmente, crie um arquivo `.dev.vars` na raiz do projeto com as chaves do OAuth do Google:
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+Conteúdo esperado:
+
+```bash
+GOOGLE_CLIENT_ID="seu_client_id"
+GOOGLE_CLIENT_SECRET="seu_client_secret"
+GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8787/api/calendar/google/callback"
+GOOGLE_TOKEN_ENCRYPTION_KEY="uma-chave-secreta-forte-para-criptografar-o-refresh-token"
+GOOGLE_CALENDAR_WEBHOOK_URL="http://localhost:8787/api/calendar/google/webhook"
+GOOGLE_CALENDAR_DEFAULT_ID="seu-email-google"
+GOOGLE_CALENDAR_INCLUDED_IDS="seu-email-google"
+DATAJUD_API_KEY="sua-chave-da-api-publica-datajud"
+```
+
+Se o projeto for executado em produção, esses valores devem ser configurados no ambiente do Cloudflare Worker como secrets/vars, não como constantes no código.
+
 ## Banco de dados
 
 O projeto usa Cloudflare D1, baseado em SQLite. O schema está em `db/schema.ts` e as migrations estão em `drizzle/`.
@@ -55,4 +78,4 @@ O fluxo de sincronização:
 5. insere somente publicações inéditas;
 6. preserva alterações administrativas feitas no sistema.
 
-Não há chaves ou dados do banco de produção neste repositório.
+Credenciais reais devem permanecer apenas em `.dev.vars` no ambiente local e nos secrets do Cloudflare em produção.

@@ -50,6 +50,48 @@
       "when": 1789223950847,
       "tag": "0006_clear_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789247522771,
+      "tag": "0007_oval_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789390943370,
+      "tag": "0008_nasty_shocker",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789395893437,
+      "tag": "0009_nice_bloodstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789489893306,
+      "tag": "0010_abandoned_phil_sheldon",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789490677755,
+      "tag": "0011_equal_wither",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1789575728375,
+      "tag": "0012_hot_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

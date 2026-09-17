@@ -1,8 +1,8 @@
 import { and, eq, ne, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { legalProcesses, tasks, type Priority, type RecurrenceEndType, type RecurrenceFrequency, type TaskAssignee, type TaskStatus } from "@/db/schema";
+import { clients, legalProcesses, tasks, type Priority, type RecurrenceEndType, type RecurrenceFrequency, type TaskAssignee, type TaskStatus } from "@/db/schema";
 import { optionalText } from "@/lib/legal";
-import { RECURRENCE_END_TYPES, RECURRENCE_FREQUENCIES, TASK_PRIORITIES, TASK_STATUSES, TEAM_MEMBERS, isIsoDate, isTime, nextOccurrenceDate, parseWeekDays, type TaskRecord } from "@/lib/tasks";
+import { RECURRENCE_END_TYPES, RECURRENCE_FREQUENCIES, TASK_PRIORITIES, TASK_STATUSES, TEAM_MEMBERS, isIsoDate, isTime, nextOccurrenceDate, parseTaskAttachments, parseTaskTags, parseWeekDays, type TaskRecord } from "@/lib/tasks";
 
 function parseId(value: string) {
   const id = Number(value);
@@ -14,26 +14,14 @@ async function createNextOccurrence(current: TaskRecord) {
   const dueDate = nextOccurrenceDate(current);
   if (!dueDate) return null;
   const [next] = await getDb().insert(tasks).values({
-    title: current.title,
-    description: current.description,
-    status: "TODO",
-    priority: current.priority,
-    dueDate,
-    dueTime: current.dueTime,
-    assignee: current.assignee,
-    isRecurring: true,
-    recurrenceFrequency: current.recurrenceFrequency,
-    recurrenceInterval: current.recurrenceInterval,
-    recurrenceDaysOfWeek: current.recurrenceDaysOfWeek,
-    recurrenceDayOfMonth: current.recurrenceDayOfMonth,
-    recurrenceEndType: current.recurrenceEndType,
-    recurrenceEndDate: current.recurrenceEndDate,
-    recurrenceCount: current.recurrenceCount,
-    recurrenceOccurrence: current.recurrenceOccurrence + 1,
-    recurrenceSeriesId: current.recurrenceSeriesId || crypto.randomUUID(),
-    parentOccurrenceId: current.id,
-    clientId: current.clientId,
-    processId: current.processId,
+    title: current.title, description: current.description, status: "TODO", priority: current.priority,
+    dueDate, dueTime: current.dueTime, assignee: current.assignee, isRecurring: true,
+    recurrenceFrequency: current.recurrenceFrequency, recurrenceInterval: current.recurrenceInterval,
+    recurrenceDaysOfWeek: current.recurrenceDaysOfWeek, recurrenceDayOfMonth: current.recurrenceDayOfMonth,
+    recurrenceEndType: current.recurrenceEndType, recurrenceEndDate: current.recurrenceEndDate,
+    recurrenceCount: current.recurrenceCount, recurrenceOccurrence: current.recurrenceOccurrence + 1,
+    recurrenceSeriesId: current.recurrenceSeriesId || crypto.randomUUID(), parentOccurrenceId: current.id,
+    clientId: current.clientId, processId: current.processId, tags: current.tags, attachments: current.attachments,
     updatedAt: new Date().toISOString(),
   }).onConflictDoNothing().returning();
   return next || null;
@@ -54,35 +42,35 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const status = TASK_STATUSES.includes(requestedStatus as CurrentTaskStatus) ? requestedStatus as CurrentTaskStatus : normalizedExisting;
   const now = new Date().toISOString();
   const fullEdit = Object.prototype.hasOwnProperty.call(body, "title");
-  let values: Partial<typeof tasks.$inferInsert> = {
-    status,
-    completedAt: status === "COMPLETED" ? existing.completedAt || now : null,
-    updatedAt: now,
-  };
+  let values: Partial<typeof tasks.$inferInsert> = { status, completedAt: status === "COMPLETED" ? existing.completedAt || now : null, updatedAt: now };
 
   if (fullEdit) {
     const title = optionalText(body.title, 300);
     if (!title) return Response.json({ success: false, error: "Informe o título da tarefa." }, { status: 400 });
+    let clientId = body.clientId ? Number(body.clientId) : null;
     const processId = body.processId ? Number(body.processId) : null;
-    if (processId !== null && (!Number.isInteger(processId) || processId < 1)) return Response.json({ success: false, error: "Processo inválido para este cliente." }, { status: 400 });
+    if (clientId !== null && (!Number.isInteger(clientId) || clientId < 1)) return Response.json({ success: false, error: "Cliente inválido." }, { status: 400 });
+    if (processId !== null && (!Number.isInteger(processId) || processId < 1)) return Response.json({ success: false, error: "Processo inválido." }, { status: 400 });
     if (processId) {
-      const [process] = await db.select({ id: legalProcesses.id }).from(legalProcesses).where(and(eq(legalProcesses.id, processId), eq(legalProcesses.clientId, existing.clientId!))).limit(1);
-      if (!process) return Response.json({ success: false, error: "Processo inválido para este cliente." }, { status: 400 });
+      const [process] = await db.select({ id: legalProcesses.id, clientId: legalProcesses.clientId }).from(legalProcesses).where(and(eq(legalProcesses.id, processId), eq(legalProcesses.source, "PRIVATE"))).limit(1);
+      if (!process) return Response.json({ success: false, error: "Processo não encontrado." }, { status: 404 });
+      if (clientId && clientId !== process.clientId) return Response.json({ success: false, error: "O processo não pertence ao cliente selecionado." }, { status: 400 });
+      clientId = process.clientId;
+    } else if (clientId) {
+      const [client] = await db.select({ id: clients.id }).from(clients).where(and(eq(clients.id, clientId), eq(clients.source, "PRIVATE"))).limit(1);
+      if (!client) return Response.json({ success: false, error: "Cliente não encontrado." }, { status: 404 });
     }
-    const suppliedDueDate = optionalText(body.dueDate, 30);
-    const suppliedDueTime = optionalText(body.dueTime, 10);
-    if (suppliedDueDate && !isIsoDate(suppliedDueDate)) return Response.json({ success: false, error: "Data inválida." }, { status: 400 });
-    if (suppliedDueTime && (!suppliedDueDate || !isTime(suppliedDueTime))) return Response.json({ success: false, error: "Defina uma data e hora válidas." }, { status: 400 });
-    const dueDate = suppliedDueDate;
-    const dueTime = suppliedDueTime;
+
+    const dueDate = optionalText(body.dueDate, 30);
+    const dueTime = optionalText(body.dueTime, 10);
+    if (dueDate && !isIsoDate(dueDate)) return Response.json({ success: false, error: "Data inválida." }, { status: 400 });
+    if (dueTime && (!dueDate || !isTime(dueTime))) return Response.json({ success: false, error: "Defina uma data e hora válidas." }, { status: 400 });
     const recurrenceFrequency = RECURRENCE_FREQUENCIES.includes(body.recurrenceFrequency as RecurrenceFrequency) ? body.recurrenceFrequency as RecurrenceFrequency : "NONE";
     const isRecurring = recurrenceFrequency !== "NONE";
     if (isRecurring && !dueDate) return Response.json({ success: false, error: "Defina uma data para a tarefa recorrente." }, { status: 400 });
     const recurrenceInterval = Math.max(1, Math.min(365, Number(body.recurrenceInterval) || 1));
     const recurrenceDays = recurrenceFrequency === "WEEKLY" ? parseWeekDays(body.recurrenceDaysOfWeek) : [];
-    const recurrenceDayOfMonth = recurrenceFrequency === "MONTHLY" && dueDate
-      ? Math.max(1, Math.min(31, Number(body.recurrenceDayOfMonth) || Number(dueDate.slice(8, 10))))
-      : null;
+    const recurrenceDayOfMonth = recurrenceFrequency === "MONTHLY" && dueDate ? Math.max(1, Math.min(31, Number(body.recurrenceDayOfMonth) || Number(dueDate.slice(8, 10)))) : null;
     const requestedEndType = RECURRENCE_END_TYPES.includes(body.recurrenceEndType as RecurrenceEndType) ? body.recurrenceEndType as RecurrenceEndType : "NEVER";
     const recurrenceEndType = isRecurring ? requestedEndType : "NEVER";
     const suppliedAssignee = optionalText(body.assignee, 100);
@@ -91,20 +79,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const suppliedPriority = optionalText(body.priority, 20);
     if (suppliedPriority && !TASK_PRIORITIES.includes(suppliedPriority as Priority)) return Response.json({ success: false, error: "Prioridade inválida." }, { status: 400 });
     values = {
-      ...values,
-      title,
-      description: optionalText(body.description, 5000),
-      processId,
-      priority: (suppliedPriority || "MEDIUM") as Priority,
-      dueDate,
-      dueTime,
-      assignee: suppliedAssignee as TaskAssignee | null,
-      isRecurring,
-      recurrenceFrequency,
-      recurrenceInterval,
-      recurrenceDaysOfWeek: recurrenceDays.length ? recurrenceDays.join(",") : null,
-      recurrenceDayOfMonth,
-      recurrenceEndType,
+      ...values, title, description: optionalText(body.description, 5000), clientId, processId,
+      tags: Object.prototype.hasOwnProperty.call(body, "tags") ? JSON.stringify(parseTaskTags(body.tags)) : existing.tags,
+      attachments: Object.prototype.hasOwnProperty.call(body, "attachments") ? JSON.stringify(parseTaskAttachments(body.attachments)) : existing.attachments,
+      priority: (suppliedPriority || "MEDIUM") as Priority, dueDate, dueTime,
+      assignee: suppliedAssignee as TaskAssignee | null, isRecurring, recurrenceFrequency, recurrenceInterval,
+      recurrenceDaysOfWeek: recurrenceDays.length ? recurrenceDays.join(",") : null, recurrenceDayOfMonth, recurrenceEndType,
       recurrenceEndDate: recurrenceEndType === "DATE" && isIsoDate(body.recurrenceEndDate) ? body.recurrenceEndDate : null,
       recurrenceCount: recurrenceEndType === "COUNT" ? Math.max(1, Math.min(1000, Number(body.recurrenceCount) || 1)) : null,
       recurrenceSeriesId: isRecurring ? existing.recurrenceSeriesId || crypto.randomUUID() : null,
@@ -123,15 +103,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const db = getDb();
   const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1) as TaskRecord[];
   if (!task) return Response.json({ success: false, error: "Tarefa não encontrada." }, { status: 404 });
-
   if (body.scope === "FUTURE" && task.recurrenceSeriesId) {
-    await db.delete(tasks).where(and(
-      eq(tasks.recurrenceSeriesId, task.recurrenceSeriesId),
-      or(eq(tasks.id, task.id), ne(tasks.status, "COMPLETED")),
-    ));
+    await db.delete(tasks).where(and(eq(tasks.recurrenceSeriesId, task.recurrenceSeriesId), or(eq(tasks.id, task.id), ne(tasks.status, "COMPLETED"))));
     return Response.json({ success: true, scope: "FUTURE" });
   }
-
   if (task.isRecurring && task.status !== "COMPLETED") await createNextOccurrence(task);
   await db.delete(tasks).where(eq(tasks.id, id));
   return Response.json({ success: true, scope: "THIS" });

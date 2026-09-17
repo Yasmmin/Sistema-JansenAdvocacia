@@ -144,7 +144,11 @@ export default function ClientsPage() {
 
   return <div className="mx-auto w-full max-w-[1500px] px-4 py-7 sm:px-7 lg:px-10 lg:py-10">
     <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-      <div><p className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Carteira particular</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Clientes</h1><p className="mt-2 text-base text-slate-600">Clientes e processos particulares acompanhados pelo escritório.</p></div>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Carteira particular</p>
+        <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.035em] text-[#111a2d]">Clientes</h1>
+        <p className="mt-2 text-sm text-slate-500">Clientes e processos particulares acompanhados pelo escritório.</p>
+      </div>
       <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void syncPortfolio()} disabled={syncingPortfolio} className="h-11">{syncingPortfolio ? <LoaderCircle className="animate-spin" /> : <History />}{syncingPortfolio ? `Consultando ${portfolioRun?.lastPeriod || "histórico"}...` : portfolioRun?.status === "RUNNING" ? "Continuar sincronização" : "Sincronizar carteira completa"}</Button><Button onClick={() => setDialogOpen(true)} className="h-11 self-start bg-[#112b3d] px-5 hover:bg-[#1c4057]"><Plus />Novo cliente</Button></div>
     </header>
 

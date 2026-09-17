@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { clients, legalProcesses, tasks, type Priority, type RecurrenceEndType, type RecurrenceFrequency, type TaskAssignee } from "@/db/schema";
 import { optionalText } from "@/lib/legal";
-import { RECURRENCE_END_TYPES, RECURRENCE_FREQUENCIES, TASK_PRIORITIES, TEAM_MEMBERS, isIsoDate, isTime, parseWeekDays } from "@/lib/tasks";
+import { RECURRENCE_END_TYPES, RECURRENCE_FREQUENCIES, TASK_PRIORITIES, TEAM_MEMBERS, isIsoDate, isTime, parseTaskAttachments, parseTaskTags, parseWeekDays } from "@/lib/tasks";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const clientId = Number((await params).id);
@@ -66,6 +66,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     recurrenceSeriesId: isRecurring ? crypto.randomUUID() : null,
     clientId,
     processId,
+    tags: JSON.stringify(parseTaskTags(body?.tags)),
+    attachments: JSON.stringify(parseTaskAttachments(body?.attachments)),
     updatedAt: new Date().toISOString(),
   }).returning();
   return Response.json({ success: true, task }, { status: 201 });

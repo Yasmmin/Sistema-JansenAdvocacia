@@ -1,42 +1,135 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BellRing, BriefcaseBusiness, Menu } from "lucide-react";
+import { CalendarDays, ClipboardCheck, Gavel, LayoutGrid, Mail, Menu, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-const navigation = [
-  { href: "/", label: "Monitor DJEN", icon: BellRing },
-  { href: "/clientes", label: "Clientes", icon: BriefcaseBusiness },
+const jansenNavigation = [
+  { href: "/", label: "Dashboard Jansen", icon: LayoutGrid },
+  { href: "/intimacoes", label: "Intimações", icon: Mail, badge: "12" },
+  { href: "/clientes", label: "Clientes", icon: UsersRound },
+  { href: "/tarefas", label: "Tarefas", icon: ClipboardCheck },
+  { href: "/calendario", label: "Calendário", icon: CalendarDays },
+  { href: "/audiencias", label: "Audiências", icon: Gavel },
 ];
+
+const sajulbraNavigation = [
+  { href: "/sajulbra", label: "Dashboard Sajulbra", icon: LayoutGrid, section: true },
+  { href: "/sajulbra/intimacoes", label: "Intimações", icon: Mail },
+  { href: "/sajulbra/assistidos", label: "Assistidos", icon: UsersRound },
+  { href: "/sajulbra/calendario", label: "Calendário", icon: CalendarDays },
+  { href: "/sajulbra/audiencias", label: "Audiências", icon: Gavel },
+];
+
+function isNavigationItemActive(href: string, pathname: string) {
+  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+}
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  return <nav className="mt-8 space-y-1 px-3" aria-label="Navegação principal">
-    {navigation.map(({ href, label, icon: Icon }) => {
-      const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-      return <a key={href} href={href} onClick={onNavigate} className={cn("flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition-colors", active ? "bg-white/12 text-white" : "text-slate-300 hover:bg-white/7 hover:text-white")}>
-        <Icon className="size-[18px]" />{label}
-      </a>;
-    })}
-  </nav>;
+
+  return (
+    <nav className="mt-10 px-3" aria-label="Navegação principal">
+      <div className="space-y-0.5">
+        {jansenNavigation.map(({ href, label, icon: Icon, badge }) => {
+          const active = isNavigationItemActive(href, pathname);
+          return (
+            <Link
+              key={href}
+              href={href}
+              onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "group flex h-[42px] items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59b00]",
+                active
+                  ? "border border-[#3b3440] bg-[#1c1d2b] text-[#f59b00]"
+                  : "text-[#9aa9bf] hover:bg-white/[0.045] hover:text-white",
+              )}
+            >
+              <Icon className={cn("size-[18px]", active ? "text-[#f59b00]" : "text-[#8797ad] group-hover:text-white")} strokeWidth={1.8} />
+              <span>{label}</span>
+              {badge && <span className="ml-auto grid size-[22px] place-items-center rounded-full bg-[#f6a000] text-[11px] font-bold text-[#101725]">{badge}</span>}
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="mb-10 mt-6 border-t border-[#3b4554]" />
+
+      <div className="space-y-0.5">
+        {sajulbraNavigation.map(({ href, label, icon: Icon, section }) => {
+          const active = isNavigationItemActive(href, pathname);
+          return (
+            <Link
+              key={href}
+              href={href}
+              onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "group flex h-[42px] items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors hover:bg-white/[0.045] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59b00]",
+                active ? "border border-[#3b3440] bg-[#1c1d2b] text-[#f59b00]" : "text-[#9aa9bf]",
+                section && "mb-5",
+              )}
+            >
+              <Icon className={cn("size-[18px]", active ? "text-[#f59b00]" : "text-[#8797ad] group-hover:text-white")} strokeWidth={1.8} />
+              <span>{label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
 }
 
 function Brand() {
-  return <div className="flex items-center gap-3 px-5 pt-6"><div className="grid size-10 place-items-center rounded-lg border border-white/25 text-sm font-bold text-white">J</div><div><p className="font-semibold tracking-[0.14em] text-white">JANSEN</p><p className="mt-0.5 text-xs text-slate-400">Painel interno</p></div></div>;
+  return (
+    <div className="px-6 pt-6">
+      <Image
+        src="/jansen-logo-horizontal.png"
+        alt="Jansen Advocacia"
+        width={3590}
+        height={950}
+        priority
+        className="h-auto w-[150px]"
+      />
+    </div>
+  );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#f3f5f7] text-slate-950">
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 border-r border-slate-800 bg-[#112b3d] md:block">
-      <Brand /><Navigation />
-      <p className="absolute bottom-6 left-5 right-5 text-xs leading-5 text-slate-400">Ambiente interno<br />OAB/RS 103.774</p>
-    </aside>
-    <div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 md:hidden">
-      <div className="flex items-center gap-2.5"><div className="grid size-8 place-items-center rounded-md bg-[#112b3d] text-xs font-bold text-white">J</div><span className="font-semibold tracking-[0.1em] text-[#112b3d]">JANSEN</span></div>
-      <Sheet><SheetTrigger asChild><Button variant="ghost" size="icon" aria-label="Abrir menu"><Menu /></Button></SheetTrigger><SheetContent side="left" className="w-72 border-slate-800 bg-[#112b3d] p-0"><SheetTitle className="sr-only">Menu principal</SheetTitle><Brand /><Navigation /></SheetContent></Sheet>
+  return (
+    <div className="min-h-screen bg-[#f6f8fa] text-[#121b2d]">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[300px] border-r border-white/[0.05] bg-[#09111f] lg:block">
+        <Brand />
+        <Navigation />
+      </aside>
+
+      <div className="sticky top-0 z-30 flex h-[68px] items-center justify-between border-b border-[#e0e5eb] bg-white px-4 lg:hidden">
+        <Image
+          src="/jansen-logo-horizontal.png"
+          alt="Jansen Advocacia"
+          width={3590}
+          height={950}
+          priority
+          className="h-auto w-[120px] brightness-0"
+        />
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Abrir menu" className="rounded-lg text-slate-700 hover:bg-slate-100"><Menu /></Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[300px] border-white/[0.05] bg-[#09111f] p-0 text-white">
+            <SheetTitle className="sr-only">Menu principal</SheetTitle>
+            <Brand />
+            <Navigation />
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      <main className="lg:pl-[300px]">{children}</main>
     </div>
-    <main className="md:pl-60">{children}</main>
-  </div>;
+  );
 }

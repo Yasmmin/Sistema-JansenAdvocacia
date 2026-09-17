@@ -1,18 +1,28 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "jansen-djen-monitor",
-  "main": "dist/server/index.js",
-  "compatibility_date": "2026-05-15",
-  "compatibility_flags": ["nodejs_compat"],
-  "assets": {
-    "directory": "dist/client"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "jansen-djen-local",
-      "database_id": "00000000-0000-4000-8000-000000000000",
-      "migrations_dir": "drizzle"
-    }
-  ]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "jansen-djen-monitor",
+	"main": "worker.ts",
+	"compatibility_date": "2026-05-15",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": "dist/client"
+	},
+	"vars": {
+		"GOOGLE_CALENDAR_WEBHOOK_URL": "https://jansen-djen-monitor.yasmmin.workers.dev/api/calendar/google/webhook",
+		"GOOGLE_CALENDAR_INCLUDED_IDS": "francisco@jansenadvocacia.com.br",
+		"GOOGLE_CALENDAR_DEFAULT_ID": "francisco@jansenadvocacia.com.br"
+	},
+	"triggers": {
+		"crons": ["0 */6 * * *"]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "jansen-djen",
+			"database_id": "0c292173-9093-4a1c-8771-1c01c179131f",
+			"migrations_dir": "drizzle"
+		}
+	]
 }

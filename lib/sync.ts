@@ -1,7 +1,7 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getD1, getDb } from "@/db";
 import { clients, ignoredImports, intimations, legalProcesses, pendingLegalProcesses, syncRuns } from "@/db/schema";
-import { queryDjen, queryDjenRange } from "@/lib/djen";
+import { DJEN_HISTORY_FLOOR, DJEN_LOOKBACK_DAYS, MONITORED_LAWYER, dateInSaoPaulo, queryDjenRange, subtractDays } from "@/lib/djen";
 import { queryDataJud, type DataJudProcess } from "@/lib/datajud";
 import { allowedCourt, inferArea, normalizePersonName, normalizeProcessNumber, processDigits } from "@/lib/legal";
 
@@ -9,9 +9,34 @@ type SyncOptions = { startDate?: string; endDate?: string; historical?: boolean 
 
 export async function syncDjen(options: SyncOptions = {}) {
   const db = getDb();
-  const [attempt] = await db.insert(syncRuns).values({ status: "RUNNING" }).returning();
+  const explicitRange = Boolean(options.startDate && options.endDate);
+  const [completedFirstSync] = await db.select({ id: syncRuns.id }).from(syncRuns).where(and(
+    eq(syncRuns.status, "SUCCESS"),
+    eq(syncRuns.oab, MONITORED_LAWYER.oab),
+    eq(syncRuns.oabUf, MONITORED_LAWYER.uf),
+    eq(syncRuns.firstSyncCompleted, true),
+  )).limit(1);
+  const [priorSuccess] = await db.select({ succeededAt: syncRuns.succeededAt }).from(syncRuns).where(and(
+    eq(syncRuns.status, "SUCCESS"),
+    eq(syncRuns.oab, MONITORED_LAWYER.oab),
+    eq(syncRuns.oabUf, MONITORED_LAWYER.uf),
+    eq(syncRuns.firstSyncCompleted, true),
+  )).orderBy(desc(syncRuns.succeededAt), desc(syncRuns.id)).limit(1);
+  const historical = options.historical === true;
+  const officialHistorical = historical && !explicitRange;
+  const periodEnd = options.endDate || dateInSaoPaulo(new Date());
+  const periodStart = options.startDate || (historical ? DJEN_HISTORY_FLOOR : subtractDays(periodEnd, DJEN_LOOKBACK_DAYS));
+  const [attempt] = await db.insert(syncRuns).values({
+    status: "RUNNING",
+    oab: MONITORED_LAWYER.oab,
+    oabUf: MONITORED_LAWYER.uf,
+    historical,
+    firstSyncCompleted: false,
+    periodStart,
+    periodEnd,
+  }).returning();
   try {
-    const result = options.startDate && options.endDate ? await queryDjenRange(options.startDate, options.endDate) : await queryDjen();
+    const result = await queryDjenRange(periodStart, periodEnd);
     const ids = result.publications.map((item) => item.externalId);
     const normalizedProcessNumbers = [...new Set(result.publications.map((item) => item.processNumber ? normalizeProcessNumber(item.processNumber) : null).filter((value): value is string => Boolean(value)))];
     const matchingProcesses: Array<{ id: number; processNumber: string; clientId: number | null }> = [];
@@ -25,17 +50,30 @@ export async function syncDjen(options: SyncOptions = {}) {
       matchingPending.push(...await db.select({ id: pendingLegalProcesses.id, processNumber: pendingLegalProcesses.processNumber }).from(pendingLegalProcesses).where(inArray(pendingLegalProcesses.processNumber, normalizedProcessNumbers.slice(index, index + 50))));
     }
     const pendingMap = new Map(matchingPending.map((process) => [processDigits(process.processNumber), process.id]));
-    const existing: Array<{ externalId: string }> = [];
+    const existing: Array<{ externalId: string; fingerprint: string }> = [];
     for (let index = 0; index < ids.length; index += 50) {
       const batchIds = ids.slice(index, index + 50);
       existing.push(
         ...await db
-          .select({ externalId: intimations.externalId })
+          .select({ externalId: intimations.externalId, fingerprint: intimations.fingerprint })
           .from(intimations)
           .where(inArray(intimations.externalId, batchIds)),
       );
     }
     const known = new Set(existing.map((item) => item.externalId));
+    const fingerprints = result.publications.map((item) => item.fingerprint);
+    const existingFingerprints: Array<{ externalId: string; fingerprint: string }> = [];
+    for (let index = 0; index < fingerprints.length; index += 50) {
+      existingFingerprints.push(
+        ...await db
+          .select({ externalId: intimations.externalId, fingerprint: intimations.fingerprint })
+          .from(intimations)
+          .where(inArray(intimations.fingerprint, fingerprints.slice(index, index + 50))),
+      );
+    }
+    const fingerprintOwners = new Map(existingFingerprints.map((item) => [item.fingerprint, item.externalId]));
+    const databaseDuplicates = result.publications.filter((item) => fingerprintOwners.has(item.fingerprint) && fingerprintOwners.get(item.fingerprint) !== item.externalId).length;
+    const publicationsToPersist = result.publications.filter((item) => !fingerprintOwners.has(item.fingerprint) || fingerprintOwners.get(item.fingerprint) === item.externalId);
     const now = new Date().toISOString();
 
     const publicationGroups = new Map<string, typeof result.publications>();
@@ -48,14 +86,14 @@ export async function syncDjen(options: SyncOptions = {}) {
     const ignoredProcesses = new Set(ignored.filter((item) => item.kind === "PROCESS").map((item) => item.normalizedValue));
     const ignoredClients = new Set(ignored.filter((item) => item.kind === "CLIENT").map((item) => item.normalizedValue));
     const dataJudMap = new Map<string, DataJudProcess>();
-    let dataJudErrors = 0;
-    if (options.historical) {
-      const byCourt = new Map<string, string[]>();
-      for (const publication of result.publications) if (publication.processNumber && publication.court) byCourt.set(publication.court, [...(byCourt.get(publication.court) || []), publication.processNumber]);
-      for (const [court, numbers] of byCourt) {
-        try { for (const [digits, data] of await queryDataJud(court, numbers)) dataJudMap.set(digits, data); }
-        catch (error) { dataJudErrors += 1; console.error("[DATAJUD]", error); }
-      }
+    const dataJudErrors = 0;
+    const byCourt = new Map<string, string[]>();
+    for (const publication of result.publications) {
+      if (!publication.processNumber || !publication.court) continue;
+      byCourt.set(publication.court, [...(byCourt.get(publication.court) || []), publication.processNumber]);
+    }
+    for (const [court, numbers] of byCourt) {
+      for (const [digits, data] of await queryDataJud(court, numbers)) dataJudMap.set(digits, data);
     }
     const currentClients = await db.select({ id: clients.id, name: clients.name, normalizedName: clients.normalizedName }).from(clients).where(eq(clients.source, "PRIVATE"));
     const clientMap = new Map<string, number>();
@@ -112,7 +150,7 @@ export async function syncDjen(options: SyncOptions = {}) {
       const inferredArea = inferArea(actionType, judicialBody);
       const movementAt = official?.lastMovementAt || latest.availabilityDate;
       const movementDescription = official?.lastMovementDescription || latest.summary;
-      const officialStatus = official?.status || (options.historical ? "UNKNOWN" : "ACTIVE");
+       const officialStatus = official?.status || (historical ? "UNKNOWN" : "ACTIVE");
       processOutcomes.push({ processNumber: digits, status: officialStatus, excludedReason: null, confidential });
       if (!clientId) {
         await db.insert(pendingLegalProcesses).values({
@@ -164,7 +202,7 @@ export async function syncDjen(options: SyncOptions = {}) {
       publication_date = excluded.publication_date, recipient = excluded.recipient, lawyer_name = excluded.lawyer_name,
       content = excluded.content, summary = excluded.summary, source_url = excluded.source_url,
       action_type = excluded.action_type, updated_at = excluded.updated_at`;
-    const statements = result.publications.map((item) => d1.prepare(sql).bind(
+    const statements = publicationsToPersist.map((item) => d1.prepare(sql).bind(
       item.externalId, item.fingerprint, item.processNumber ? normalizeProcessNumber(item.processNumber) : null,
       processMap.get(processDigits(item.processNumber)) ?? null, item.court, item.judicialBody, item.availabilityDate,
       item.publicationDate, item.recipient, item.lawyerName, item.oab, item.oabUf, item.content, item.summary,
@@ -180,12 +218,22 @@ export async function syncDjen(options: SyncOptions = {}) {
       updated_at = ? WHERE id = ?`).bind(processId, processId, now, processId));
     for (let index = 0; index < movementUpdates.length; index += 50) await d1.batch(movementUpdates.slice(index, index + 50));
 
-    const newCount = ids.filter((id) => !known.has(id)).length;
-    const existingCount = ids.length - newCount;
-    await db.update(syncRuns).set({ status: "SUCCESS", succeededAt: now, receivedCount: result.received, newCount, existingCount }).where(eq(syncRuns.id, attempt.id));
-    return { success: true, received: result.received, validated: ids.length, new: newCount, existing: existingCount,
+    const newCount = result.publications.filter((item) => !known.has(item.externalId) && !fingerprintOwners.has(item.fingerprint)).length;
+    const existingCount = result.publications.filter((item) => known.has(item.externalId)).length;
+    const duplicateCount = result.duplicateCount + databaseDuplicates;
+    const firstSyncCompleted = Boolean(completedFirstSync || priorSuccess || officialHistorical || !historical);
+    await db.update(syncRuns).set({
+      status: "SUCCESS", succeededAt: now, receivedCount: result.received, totalFound: result.total,
+      totalUniqueProcesses: publicationGroups.size, newCount, existingCount, updatedCount: existingCount,
+      duplicateCount, pagesProcessed: result.pagesProcessed, periodsProcessed: 1,
+      minDate: result.minDate, maxDate: result.maxDate, recordsByYear: JSON.stringify(result.recordsByYear),
+      lastPeriodProcessed: periodEnd, firstSyncCompleted, excludedSajulbra: excludedProcesses,
+    }).where(eq(syncRuns.id, attempt.id));
+    return { success: true, rawTotal: result.total, received: result.received, validated: result.publications.length, new: newCount, existing: existingCount,
+      updated: existingCount, duplicates: duplicateCount, pagesProcessed: result.pagesProcessed, recordsByYear: result.recordsByYear,
       processesFound: publicationGroups.size, activeProcesses, importedClients, updatedClients, importedProcesses, updatedProcesses,
-      excludedProcesses, confidentialProcesses, dataJudErrors, processOutcomes, period: { start: result.startDate, end: result.endDate } };
+      excludedProcesses, confidentialProcesses, dataJudErrors, processOutcomes, firstSyncCompleted, historical,
+      period: { start: result.startDate, end: result.endDate }, coverage: { minDate: result.minDate, maxDate: result.maxDate } };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha inesperada";
     try {
