@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, FileDown, LoaderCircle, Plus, RefreshCw } from "lucide-react";
 import {
@@ -10,6 +9,10 @@ import {
   type ProcessStatusPoint,
 } from "@/components/dashboard-charts";
 import { Button } from "@/components/ui/button";
+
+function Link({ href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+  return <a href={href} {...props} />;
+}
 
 type SyncRun = {
   id?: number;

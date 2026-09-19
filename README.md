@@ -20,7 +20,7 @@ pnpm db:migrate:local
 pnpm dev
 ```
 
-O endereço local será exibido no terminal.
+O sistema ficará disponível em `http://127.0.0.1:8787/`.
 
 Para testar o build de produção localmente:
 
@@ -42,9 +42,9 @@ Conteúdo esperado:
 ```bash
 GOOGLE_CLIENT_ID="seu_client_id"
 GOOGLE_CLIENT_SECRET="seu_client_secret"
-GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8787/api/calendar/google/callback"
+GOOGLE_OAUTH_REDIRECT_URI="http://127.0.0.1:8787/api/calendar/google/callback"
 GOOGLE_TOKEN_ENCRYPTION_KEY="uma-chave-secreta-forte-para-criptografar-o-refresh-token"
-GOOGLE_CALENDAR_WEBHOOK_URL="http://localhost:8787/api/calendar/google/webhook"
+GOOGLE_CALENDAR_WEBHOOK_URL="http://127.0.0.1:8787/api/calendar/google/webhook"
 GOOGLE_CALENDAR_DEFAULT_ID="seu-email-google"
 GOOGLE_CALENDAR_INCLUDED_IDS="seu-email-google"
 DATAJUD_API_KEY="sua-chave-da-api-publica-datajud"

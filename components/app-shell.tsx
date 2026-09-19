@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, ClipboardCheck, Gavel, LayoutGrid, Mail, Menu, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,7 +37,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
         {jansenNavigation.map(({ href, label, icon: Icon, badge }) => {
           const active = isNavigationItemActive(href, pathname);
           return (
-            <Link
+            <a
               key={href}
               href={href}
               onClick={onNavigate}
@@ -50,10 +49,10 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
                   : "text-[#9aa9bf] hover:bg-white/[0.045] hover:text-white",
               )}
             >
-              <Icon className={cn("size-[18px]", active ? "text-[#f59b00]" : "text-[#8797ad] group-hover:text-white")} strokeWidth={1.8} />
+              <Icon aria-hidden="true" className={cn("size-[18px]", active ? "text-[#f59b00]" : "text-[#8797ad] group-hover:text-white")} strokeWidth={1.8} />
               <span>{label}</span>
               {badge && <span className="ml-auto grid size-[22px] place-items-center rounded-full bg-[#f6a000] text-[11px] font-bold text-[#101725]">{badge}</span>}
-            </Link>
+            </a>
           );
         })}
       </div>
@@ -64,7 +63,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
         {sajulbraNavigation.map(({ href, label, icon: Icon, section }) => {
           const active = isNavigationItemActive(href, pathname);
           return (
-            <Link
+            <a
               key={href}
               href={href}
               onClick={onNavigate}
@@ -75,9 +74,9 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
                 section && "mb-5",
               )}
             >
-              <Icon className={cn("size-[18px]", active ? "text-[#f59b00]" : "text-[#8797ad] group-hover:text-white")} strokeWidth={1.8} />
+              <Icon aria-hidden="true" className={cn("size-[18px]", active ? "text-[#f59b00]" : "text-[#8797ad] group-hover:text-white")} strokeWidth={1.8} />
               <span>{label}</span>
-            </Link>
+            </a>
           );
         })}
       </div>
