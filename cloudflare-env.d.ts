@@ -1,5 +1,6 @@
 declare namespace Cloudflare {
   interface Env {
+    ASSETS: Fetcher;
     DB?: D1Database;
     BUCKET?: R2Bucket;
     GOOGLE_CLIENT_ID?: string;
@@ -11,5 +12,10 @@ declare namespace Cloudflare {
     GOOGLE_CALENDAR_DEFAULT_ID?: string;
     CALENDAR_CRON_SECRET?: string;
     DATAJUD_API_KEY?: string;
+    JWT_SECRET?: string;
+    BCRYPT_ROUNDS?: string;
+    GOOGLE_REDIRECT_URI?: string;
+    SEED_ADMIN_EMAIL?: string;
+    SEED_ADMIN_PASSWORD?: string;
   }
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `portfolio_sync_runs` ADD `source` text DEFAULT 'PRIVATE' NOT NULL;

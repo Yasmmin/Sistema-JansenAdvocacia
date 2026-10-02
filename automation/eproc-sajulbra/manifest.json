@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Jansen - Verificador Sajulbra no eproc",
+  "version": "1.0.0",
+  "description": "Confere Francisco e Adamo, extrai as partes e envia o resultado ao Sistema Jansen sem usar IA.",
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js" },
+  "host_permissions": [
+    "https://eproc1g.tjrs.jus.br/*",
+    "http://127.0.0.1:8787/*"
+  ],
+  "content_scripts": [{
+    "matches": ["https://eproc1g.tjrs.jus.br/eproc/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }],
+  "options_page": "options.html"
+}
